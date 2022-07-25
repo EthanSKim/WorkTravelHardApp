@@ -1,11 +1,124 @@
 import { StatusBar } from 'expo-status-bar';
-import { StyleSheet, Text, View } from 'react-native';
+import { useEffect, useState } from 'react';
+import { StyleSheet, Text, View, Pressable, TextInput, ScrollView, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import ToDo from './ToDo';
+import { theme } from './colors';
+
+const STORAGE_KEY = "@toDos";
 
 export default function App() {
+  const [editing, setEditing] = useState(false);
+  const [complete, setComplete] = useState(false);
+  const [working, setWorking] = useState(true);
+  const [text, setText] = useState("");
+  const [editText, setEditText] = useState("");
+  const [toDos, setToDos] = useState({});
+  const travel = async () => {
+    closeEdit();
+    setWorking(false);
+    await AsyncStorage.setItem("@working", JSON.stringify(false));
+  }
+  const work = async () => {
+    closeEdit();
+    setWorking(true);
+    await AsyncStorage.setItem("@working", JSON.stringify(true));
+  }
+  const onChangeText = (payload) => setText(payload);
+  const saveToDos = async (toSave) => {
+    const s = JSON.stringify(toSave)
+    await AsyncStorage.setItem(STORAGE_KEY, s);
+  }
+  const loadToDos = async () => {
+    const s = await AsyncStorage.getItem(STORAGE_KEY);
+    setToDos(JSON.parse(s));
+  }
+  const loadWorking =  async () => {
+    const s = await AsyncStorage.getItem("@working");
+    setWorking(JSON.parse(s));
+  }
+  useEffect(() => {
+    loadWorking();
+    loadToDos();
+  }, [])
+  const addToDo = async () => {
+    if(text === "") {
+      return 
+    }
+    const newToDos = {...toDos/*extracts contents of toDos*/, [Date.now()]: {text, working, complete, editing}}
+    setToDos(newToDos);
+    await saveToDos(newToDos);
+    setText("");
+  }
+  const deleteToDo = (key) => {
+    closeEdit()
+    Alert.alert("Delete To Do", "Are you sure?", [{text:"Cancel"},
+    {text:"Confirm", onPress: async () => {
+      const newToDos = {...toDos}
+      delete newToDos[key];
+      setToDos(newToDos);
+      await saveToDos(newToDos);
+    }}])
+  }
+  const checkToDo = async (key) => {
+    closeEdit();
+    const newToDos = {...toDos}
+    newToDos[key].complete = !toDos[key].complete;
+    setToDos(newToDos);
+    await saveToDos(newToDos);
+  }
+  const openEdit = (key) => {
+    closeEdit();
+    const newToDos = {...toDos}
+    const newToDo = newToDos[key]
+    newToDo.editing = true;
+    setToDos(newToDos);
+  }
+  const closeEdit = () => {
+    const newToDos = {...toDos}
+    for (const aToDo in toDos) {
+      if(toDos[aToDo].editing === true) {
+        newToDos[aToDo].editing = false;
+      }
+    }
+    setToDos(newToDos);
+  }
+  const onEditText = (payload) => setEditText(payload);
+  const editToDo = async (key) => {
+    if(editText === "") {
+      closeEdit();
+      return
+    }
+    const newToDos = {...toDos}
+    newToDos[key].text = editText;
+    setToDos(newToDos);
+    setEditText("");
+    closeEdit();
+    saveToDos(toDos);
+  }
   return (
     <View style={styles.container}>
-      <Text>Open up App.js to start working on your app!</Text>
-      <StatusBar style="auto" />
+      <StatusBar style="light" />
+      <View style={styles.header}>
+        <Pressable onPress={work}>
+          <Text style={{...styles.btnText, color: working ? "white" : theme.grey}}>Work</Text>
+        </Pressable>
+        <Pressable onPress={travel}>
+          <Text style={{...styles.btnText, color: working ? theme.grey : "white"}}>Travel</Text>
+        </Pressable>
+      </View>
+      <TextInput onSubmitEditing={addToDo} onChangeText={onChangeText} onPressIn={closeEdit} value={text} returnKeyType="done" placeholder={working ? "Add a To Do" : "Where do you want to go?"} style={styles.input}/>
+      <ScrollView>{Object.keys(toDos).map(key => 
+        toDos[key].working === working ? (
+          toDos[key].editing ? 
+          <TextInput key={key} onSubmitEditing={() => editToDo(key)} onChangeText={onEditText} value={editText} returnKeyType="done" placeholder='Edit To Do' style={styles.input} />
+          :
+          <ToDo 
+          key={key} styles={styles} id={key} toDos={toDos} 
+          deleteToDo={deleteToDo} checkToDo={checkToDo} openEdit={openEdit}/> 
+          )
+          : null)}
+      </ScrollView>
     </View>
   );
 }
@@ -13,8 +126,52 @@ export default function App() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#fff',
-    alignItems: 'center',
-    justifyContent: 'center',
+    backgroundColor: theme.bg,
+    paddingHorizontal: 20,
   },
+  header: {
+    justifyContent: "space-between",
+    flexDirection: "row",
+    marginTop: 100
+  },
+  btnText: {
+    fontSize: 38,
+    fontWeight: "600",
+  },
+  input: {
+    backgroundColor: "white",
+    paddingVertical: 15,
+    paddingHorizontal: 20,
+    borderRadius: 30,
+    marginVertical: 20,
+    fontSize: 18
+  },
+  toDo: {
+    backgroundColor: theme.toDoBg,
+    marginBottom: 10,
+    paddingVertical: 20,
+    paddingHorizontal: 20,
+    borderRadius: 15,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    flexWrap: "wrap"
+  },
+  toDoText: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
+    paddingRight: 80
+  },
+  toDoComplete: {
+    color: "white",
+    fontSize: 16,
+    fontWeight: "500",
+    marginLeft: 18,
+    paddingRight: 60,
+    textDecorationLine: "line-through"
+  },
+  btnIcon: {
+    flexDirection: "row",
+  }
 });
